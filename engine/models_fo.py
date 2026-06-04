@@ -102,6 +102,10 @@ class FOData(BaseModel):
         """Net loss this year that can be carried forward for 8 years."""
         return max(0.0, -self.net_income)
 
+    def merge(self, other: "FOData") -> "FOData":
+        """Combine F&O data from a second broker into this one."""
+        return merge_fo_data([self, other])
+
     @property
     def requires_tax_audit(self) -> bool:
         """
@@ -115,3 +119,33 @@ class FOData(BaseModel):
         if self.net_income < 0 and self.total_turnover > 0:
             return True
         return False
+
+
+def merge_fo_data(fo_list: list[FOData]) -> FOData:
+    """
+    Merge F&O P&L data from multiple brokers by combining segments and summing expenses.
+    carry_forward_losses are not merged (always entered manually once by the CA).
+    tds_on_fo is summed across brokers.
+    """
+    if not fo_list:
+        return FOData()
+    if len(fo_list) == 1:
+        return fo_list[0]
+
+    segments = [seg for fo in fo_list for seg in fo.segments]
+    expenses = FOExpenses(
+        brokerage=sum(fo.expenses.brokerage for fo in fo_list),
+        stt=sum(fo.expenses.stt for fo in fo_list),
+        exchange_fees=sum(fo.expenses.exchange_fees for fo in fo_list),
+        dp_charges=sum(fo.expenses.dp_charges for fo in fo_list),
+        internet_software=sum(fo.expenses.internet_software for fo in fo_list),
+        advisory_fees=sum(fo.expenses.advisory_fees for fo in fo_list),
+        depreciation=sum(fo.expenses.depreciation for fo in fo_list),
+        others=sum(fo.expenses.others for fo in fo_list),
+    )
+    return FOData(
+        segments=segments,
+        expenses=expenses,
+        carry_forward_losses=fo_list[0].carry_forward_losses,  # manual field — use first entry
+        tds_on_fo=sum(fo.tds_on_fo for fo in fo_list),
+    )

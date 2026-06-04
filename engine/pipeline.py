@@ -13,8 +13,8 @@ from engine.itr_generator.itr2_generator import generate_itr2
 from engine.itr_generator.itr3_generator import generate_itr3
 from engine.models import merge_form16s
 from engine.models_ais import AISData
-from engine.models_capital_gains import CapitalGainsSummary
-from engine.models_fo import FOData
+from engine.models_capital_gains import CapitalGainsSummary, merge_capital_gains
+from engine.models_fo import FOData, merge_fo_data
 from engine.parsers.ais_parser import parse_ais
 from engine.parsers.capital_gains_parser import parse_capital_gains
 from engine.parsers.fo_parser import parse_fo
@@ -28,7 +28,7 @@ def run_pipeline(
     form16_pdf_2: Optional[str | Path] = None,
     ais_json: Optional[str | Path] = None,
     form26as_path: Optional[str | Path] = None,
-    broker_pl_pdf: Optional[str | Path] = None,
+    broker_pl_pdfs: Optional[list[str | Path]] = None,
     hra_monthly_rent: float = 0,
     hra_city: str = "",
     parents_insurance_premium: float = 0,
@@ -42,7 +42,7 @@ def run_pipeline(
     home_loan_80eea: float = 0,
     capital_gains: Optional[CapitalGainsSummary] = None,
     fo_data: Optional[FOData] = None,
-    fo_pdf: Optional[str | Path] = None,
+    fo_pdfs: Optional[list[str | Path]] = None,
     aadhaar: Optional[str] = None,
     mobile: Optional[str] = None,
     email: Optional[str] = None,
@@ -86,9 +86,10 @@ def run_pipeline(
         else:
             print(f"  TDS cross-check passed")
 
-    if broker_pl_pdf and capital_gains is None:
-        print("\nStep 2c: Parsing broker P&L for capital gains...")
-        capital_gains = parse_capital_gains(broker_pl_pdf)
+    if broker_pl_pdfs and capital_gains is None:
+        print(f"\nStep 2c: Parsing {len(broker_pl_pdfs)} broker P&L PDF(s) for capital gains...")
+        parsed_cgs = [parse_capital_gains(p) for p in broker_pl_pdfs]
+        capital_gains = merge_capital_gains(parsed_cgs)
         cg = capital_gains
         print(f"  Equity STCG (pre/post Jul 23): Rs.{cg.equity.stcg_pre_jul23:,.0f} / Rs.{cg.equity.stcg_post_jul23:,.0f}")
         print(f"  Equity LTCG (pre/post Jul 23): Rs.{cg.equity.ltcg_pre_jul23:,.0f} / Rs.{cg.equity.ltcg_post_jul23:,.0f}")
@@ -110,9 +111,9 @@ def run_pipeline(
     if rental_annual_rent > 0:
         print(f"  Rental income: ₹{rental_annual_rent:,.0f}/yr rent | Municipal taxes: ₹{rental_municipal_taxes:,.0f} | HL interest: ₹{rental_home_loan_interest:,.0f}")
 
-    if fo_pdf and fo_data is None:
-        print("\nStep 2d: Parsing F&O P&L for business income...")
-        fo_data = parse_fo(fo_pdf)
+    if fo_pdfs and fo_data is None:
+        print(f"\nStep 2d: Parsing {len(fo_pdfs)} F&O P&L PDF(s) for business income...")
+        fo_data = merge_fo_data([parse_fo(p) for p in fo_pdfs])
         print(f"  Segments: {len(fo_data.segments)} | Turnover: Rs.{fo_data.total_turnover:,.0f} | Net P&L: Rs.{fo_data.total_gross_pl:,.0f}")
         if fo_data.requires_tax_audit:
             print("  TAX AUDIT (Sec 44AB) may be required -- review with CA")

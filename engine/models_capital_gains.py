@@ -70,3 +70,41 @@ class CapitalGainsSummary(BaseModel):
             self.property_gains.stcg, self.property_gains.ltcg_with_indexation,
             self.property_gains.ltcg_without_indexation,
         ])
+
+
+def merge_capital_gains(summaries: list["CapitalGainsSummary"]) -> "CapitalGainsSummary":
+    """
+    Merge capital gains from multiple brokers by summing each bucket.
+
+    The PropertyGains mutual-exclusivity validator (which prevents a single entry
+    from having both indexation options) is intentionally bypassed here: across
+    multiple brokers a client may legitimately have one property sold with indexation
+    and another without. model_construct skips validation on the merged object.
+    """
+    if not summaries:
+        return CapitalGainsSummary()
+    if len(summaries) == 1:
+        return summaries[0]
+
+    equity = EquityGainsSplit(
+        stcg_pre_jul23=sum(s.equity.stcg_pre_jul23 for s in summaries),
+        stcg_post_jul23=sum(s.equity.stcg_post_jul23 for s in summaries),
+        ltcg_pre_jul23=sum(s.equity.ltcg_pre_jul23 for s in summaries),
+        ltcg_post_jul23=sum(s.equity.ltcg_post_jul23 for s in summaries),
+    )
+    other = OtherGains(
+        stcg_at_slab=sum(s.other.stcg_at_slab for s in summaries),
+        ltcg_20pct_with_indexation=sum(s.other.ltcg_20pct_with_indexation for s in summaries),
+        ltcg_125pct_without_indexation=sum(s.other.ltcg_125pct_without_indexation for s in summaries),
+    )
+    property_gains = PropertyGains.model_construct(
+        stcg=sum(s.property_gains.stcg for s in summaries),
+        ltcg_with_indexation=sum(s.property_gains.ltcg_with_indexation for s in summaries),
+        ltcg_without_indexation=sum(s.property_gains.ltcg_without_indexation for s in summaries),
+    )
+    return CapitalGainsSummary(
+        equity=equity,
+        other=other,
+        property_gains=property_gains,
+        tds_on_gains=sum(s.tds_on_gains for s in summaries),
+    )

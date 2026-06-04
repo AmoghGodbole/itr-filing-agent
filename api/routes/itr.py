@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from typing import List
 
 from api.schemas import (
     AISIncomeOut,
@@ -44,8 +45,8 @@ from engine.models import (
     merge_form16s,
 )
 from engine.models_ais import AISData, AISIncomeEntry
-from engine.models_capital_gains import CapitalGainsSummary, EquityGainsSplit, OtherGains, PropertyGains
-from engine.models_fo import CarryForwardLoss, FOData, FOExpenses, FOSegmentPL
+from engine.models_capital_gains import CapitalGainsSummary, EquityGainsSplit, OtherGains, PropertyGains, merge_capital_gains
+from engine.models_fo import CarryForwardLoss, FOData, FOExpenses, FOSegmentPL, merge_fo_data
 from engine.parsers.fo_parser import parse_fo
 from engine.models_schedule_al import (
     FinancialAssets, ImmovableProperty, Liabilities, MovableAssets, ScheduleALData,
@@ -76,8 +77,8 @@ async def parse(
     form16_pdf_2: Optional[UploadFile] = File(None, description="Form 16 PDF from second employer (job change)"),
     form26as_pdf: Optional[UploadFile] = File(None, description="Form 26AS PDF (optional)"),
     ais_json: Optional[UploadFile] = File(None, description="AIS JSON from IT portal (optional)"),
-    broker_pl_pdf: Optional[UploadFile] = File(None, description="Broker tax P&L PDF for capital gains (Zerodha, Groww, CAMS, etc.)"),
-    fo_pl_pdf: Optional[UploadFile] = File(None, description="Broker F&O tax P&L PDF (Zerodha, Groww, Upstox, Angel One)"),
+    broker_pl_pdfs: List[UploadFile] = File(default=[], description="Broker tax P&L PDFs for capital gains — one per broker (Zerodha, Groww, CAMS, etc.)"),
+    fo_pl_pdfs: List[UploadFile] = File(default=[], description="Broker F&O tax P&L PDFs — one per broker (Zerodha, Groww, Upstox, Angel One)"),
 ):
     """
     Step 1 — Upload documents and extract all data.
@@ -154,26 +155,32 @@ async def parse(
             ais_path.unlink(missing_ok=True)
 
     cg_out = None
-    if broker_pl_pdf and broker_pl_pdf.filename:
-        pl_path = _save_upload(broker_pl_pdf, ".pdf")
-        try:
-            cg = parse_capital_gains(pl_path)
-            cg_out = _cg_to_out(cg)
-        except Exception as e:
-            raise HTTPException(status_code=422, detail=f"Broker P&L parsing failed: {e}")
-        finally:
-            pl_path.unlink(missing_ok=True)
+    active_broker_pdfs = [f for f in broker_pl_pdfs if f.filename]
+    if active_broker_pdfs:
+        parsed_cgs = []
+        for i, upload in enumerate(active_broker_pdfs, 1):
+            pl_path = _save_upload(upload, ".pdf")
+            try:
+                parsed_cgs.append(parse_capital_gains(pl_path))
+            except Exception as e:
+                raise HTTPException(status_code=422, detail=f"Broker P&L parsing failed (file {i}): {e}")
+            finally:
+                pl_path.unlink(missing_ok=True)
+        cg_out = _cg_to_out(merge_capital_gains(parsed_cgs))
 
     fo_out = None
-    if fo_pl_pdf and fo_pl_pdf.filename:
-        fo_path = _save_upload(fo_pl_pdf, ".pdf")
-        try:
-            fo = parse_fo(fo_path)
-            fo_out = _fo_to_out(fo)
-        except Exception as e:
-            raise HTTPException(status_code=422, detail=f"F&O P&L parsing failed: {e}")
-        finally:
-            fo_path.unlink(missing_ok=True)
+    active_fo_pdfs = [f for f in fo_pl_pdfs if f.filename]
+    if active_fo_pdfs:
+        parsed_fos = []
+        for i, upload in enumerate(active_fo_pdfs, 1):
+            fo_path = _save_upload(upload, ".pdf")
+            try:
+                parsed_fos.append(parse_fo(fo_path))
+            except Exception as e:
+                raise HTTPException(status_code=422, detail=f"F&O P&L parsing failed (file {i}): {e}")
+            finally:
+                fo_path.unlink(missing_ok=True)
+        fo_out = _fo_to_out(merge_fo_data(parsed_fos))
 
     return ParseResponse(
         form16=_form16_to_out(form16),

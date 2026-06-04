@@ -18,8 +18,8 @@ export default function Home() {
   const [form16File2, setForm16File2] = useState<File | null>(null)
   const [form26asFile, setForm26asFile] = useState<File | null>(null)
   const [aisFile, setAisFile] = useState<File | null>(null)
-  const [brokerPlFile, setBrokerPlFile] = useState<File | null>(null)
-  const [foPlFile, setFoPlFile] = useState<File | null>(null)
+  const [brokerPlFiles, setBrokerPlFiles] = useState<File[]>([])
+  const [foPlFiles, setFoPlFiles] = useState<File[]>([])
 
   // F&O carry-forward losses from prior years (always manual — from prior ITR acknowledgements)
   const [foCarryForward, setFoCarryForward] = useState<{ay: string; amount: string}[]>([])
@@ -71,8 +71,8 @@ export default function Home() {
       if (form16File2) fd.append('form16_pdf_2', form16File2)
       if (form26asFile) fd.append('form26as_pdf', form26asFile)
       if (aisFile) fd.append('ais_json', aisFile)
-      if (brokerPlFile) fd.append('broker_pl_pdf', brokerPlFile)
-      if (foPlFile) fd.append('fo_pl_pdf', foPlFile)
+      brokerPlFiles.forEach(f => fd.append('broker_pl_pdfs', f))
+      foPlFiles.forEach(f => fd.append('fo_pl_pdfs', f))
 
       const res = await fetch('/api/parse', { method: 'POST', body: fd })
       if (!res.ok) throw new Error((await res.json()).detail ?? 'Parsing failed')
@@ -220,11 +220,12 @@ export default function Home() {
           <FileInput label="Form 16 PDF — Employer 2 (optional, job change mid-year)" accept=".pdf" onChange={setForm16File2} file={form16File2} />
           <FileInput label="Form 26AS PDF (optional)" accept=".pdf" onChange={setForm26asFile} file={form26asFile} />
           <FileInput label="AIS JSON (optional)" accept=".json" onChange={setAisFile} file={aisFile} />
-          <FileInput label="Broker Tax P&L PDF — for capital gains (Zerodha, Groww, CAMS, etc.)" accept=".pdf" onChange={setBrokerPlFile} file={brokerPlFile} />
-          <FileInput label="Broker F&O Tax P&L PDF — for futures & options income (triggers ITR-3)" accept=".pdf" onChange={setFoPlFile} file={foPlFile} />
-          {(brokerPlFile || foPlFile) && (
+          <MultiFileInput label="Broker Tax P&L PDFs — capital gains, one PDF per broker (Zerodha, Groww, CAMS, etc.)" accept=".pdf" files={brokerPlFiles} onChange={setBrokerPlFiles} />
+          <MultiFileInput label="Broker F&O Tax P&L PDFs — futures & options, one PDF per broker (triggers ITR-3)" accept=".pdf" files={foPlFiles} onChange={setFoPlFiles} />
+          {(brokerPlFiles.length > 0 || foPlFiles.length > 0) && (
             <p className="text-xs text-amber-600 -mt-2">
-              {foPlFile ? 'F&O income detected → ITR-3 will be generated. ' : ''}
+              {foPlFiles.length > 0 ? 'F&O income detected → ITR-3 will be generated. ' : ''}
+              {brokerPlFiles.length > 1 ? `${brokerPlFiles.length} broker PDFs will be merged. ` : ''}
               Capital gains and F&O data will be extracted and shown for review. Property gains always manual.
             </p>
           )}
@@ -342,7 +343,7 @@ export default function Home() {
           <div className="rounded-xl border bg-white p-6 shadow-sm space-y-5">
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-semibold">Capital Gains</h2>
-              {brokerPlFile && parsed?.capital_gains && (
+              {brokerPlFiles.length > 0 && parsed?.capital_gains && (
                 <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Auto-extracted — verify before filing</span>
               )}
               <span className="text-xs text-gray-500 ml-auto">Triggers ITR-2 when any figure is non-zero</span>
@@ -746,6 +747,36 @@ function FileInput({ label, accept, onChange, file }: { label: string; accept: s
         </label>
       </div>
     </label>
+  )
+}
+
+function MultiFileInput({ label, accept, files, onChange }: { label: string; accept: string; files: File[]; onChange: (f: File[]) => void }) {
+  const addFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const incoming = Array.from(e.target.files ?? [])
+    // Deduplicate by name so re-selecting the same file doesn't duplicate it
+    const merged = [...files, ...incoming.filter(f => !files.some(x => x.name === f.name))]
+    onChange(merged)
+    e.target.value = ''  // reset input so same file can be re-added after removal
+  }
+  const remove = (name: string) => onChange(files.filter(f => f.name !== name))
+
+  return (
+    <div className="space-y-1">
+      <span className="text-sm font-medium">{label}</span>
+      <div className="rounded-lg border border-gray-300 px-3 py-2 space-y-1">
+        {files.length === 0 && <p className="text-sm text-gray-400">No files selected</p>}
+        {files.map(f => (
+          <div key={f.name} className="flex items-center justify-between rounded bg-green-50 px-2 py-1 text-sm text-green-700">
+            <span>{f.name}</span>
+            <button type="button" onClick={() => remove(f.name)} className="ml-2 text-green-500 hover:text-red-500 text-xs">✕</button>
+          </div>
+        ))}
+        <label className="inline-block cursor-pointer rounded bg-gray-100 px-2 py-1 text-xs hover:bg-gray-200 mt-1">
+          + Add file
+          <input type="file" accept={accept} multiple className="hidden" onChange={addFiles} />
+        </label>
+      </div>
+    </div>
   )
 }
 
