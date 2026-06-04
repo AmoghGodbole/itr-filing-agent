@@ -1,0 +1,47 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Node / Next.js
+ui/node_modules/
+ui/.next/
+ui/out/
+ui/.env
+ui/.env.local
+
+# PDF and document uploads (contain PII)
+*.pdf
+*.PDF
+
+# ITR output files
+*.json
+!requirements.txt
+!ui/package.json
+!ui/package-lock.json
+!ui/tsconfig.json
+!ui/tailwind.config.ts
+!ui/next.config.*
+!ui/postcss.config.*
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Temp
+*.tmp
+*.log
