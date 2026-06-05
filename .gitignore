@@ -45,3 +45,6 @@ ui/.env.local
 # Temp
 *.tmp
 *.log
+
+# Local DB / storage overrides (never commit local data)
+.docker/
