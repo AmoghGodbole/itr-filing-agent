@@ -25,6 +25,7 @@ from api.db.models import Organisation, User, Client, Filing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 DATABASE_URL = os.environ["DATABASE_URL"]
+SEED_PASSWORD = os.environ.get("SEED_USER_PASSWORD", "changeme")
 engine = create_async_engine(DATABASE_URL, echo=False)
 Session = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
 
@@ -62,19 +63,19 @@ async def seed():
                     "email": "ca@sharma.com",
                     "name": "Rajesh Sharma",
                     "role": "owner",
-                    "password": "test1234",
+                    "password": SEED_PASSWORD,
                 },
                 {
                     "email": "priya@sharma.com",
                     "name": "Priya Nair",
                     "role": "member",
-                    "password": "test1234",
+                    "password": SEED_PASSWORD,
                 },
                 {
                     "email": "rahul@sharma.com",
                     "name": "Rahul Mehta",
                     "role": "member",
-                    "password": "test1234",
+                    "password": SEED_PASSWORD,
                 },
             ]
 
@@ -192,6 +193,7 @@ if __name__ == "__main__":
     print("\nSeeding database...\n")
     asyncio.run(seed())
     print("\nDone. Login credentials:\n")
-    print("  ca@sharma.com    / test1234  (owner)")
-    print("  priya@sharma.com / test1234  (member)")
-    print("  rahul@sharma.com / test1234  (member)\n")
+    pw = os.environ.get("SEED_USER_PASSWORD", "changeme")
+    print(f"  ca@sharma.com    / {pw}  (owner)")
+    print(f"  priya@sharma.com / {pw}  (member)")
+    print(f"  rahul@sharma.com / {pw}  (member)\n")
